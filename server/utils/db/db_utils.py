@@ -1143,7 +1143,9 @@ def initialize_tables():
                         notion_page_id TEXT,
                         notion_page_url TEXT,
                         notion_exported_at TIMESTAMP,
-                        notion_database_id TEXT
+                        notion_database_id TEXT,
+                        generation_session_id VARCHAR(255),
+                        current_version_id UUID
                     );
 
                     CREATE UNIQUE INDEX IF NOT EXISTS idx_postmortems_incident_id ON postmortems(incident_id);
@@ -1195,6 +1197,9 @@ def initialize_tables():
                         trigger_config JSONB DEFAULT '{}',
                         mode VARCHAR(20) NOT NULL DEFAULT 'agent',
                         enabled BOOLEAN NOT NULL DEFAULT true,
+                        is_system BOOLEAN NOT NULL DEFAULT false,
+                        system_key VARCHAR(100),
+                        default_instructions TEXT,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
@@ -1287,6 +1292,7 @@ def initialize_tables():
             rls_tables.append("org_tool_permissions")
             rls_tables.append("actions")
             rls_tables.append("action_runs")
+            rls_tables.append("postmortem_versions")
 
 
             # Migration: Add rca_celery_task_id column to incidents table if it doesn't exist
@@ -1326,6 +1332,18 @@ def initialize_tables():
             for table_name, create_script in create_tables.items():
                 cursor.execute(create_script)
                 logging.info(f"Table '{table_name}' initialized successfully.")
+
+            # Migration: add system action columns to actions table
+            try:
+                cursor.execute("ALTER TABLE actions ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT false;")
+                cursor.execute("ALTER TABLE actions ADD COLUMN IF NOT EXISTS system_key VARCHAR(100);")
+                cursor.execute("ALTER TABLE actions ADD COLUMN IF NOT EXISTS default_instructions TEXT;")
+                cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_actions_system_key ON actions(org_id, system_key) WHERE system_key IS NOT NULL;")
+                conn.commit()
+                logging.info("Ensured system action columns exist on actions table.")
+            except Exception as e:
+                conn.rollback()
+                logging.warning(f"Migration for actions system columns: {e}")
 
             # Migration: ensure incident_alerts.user_id exists and is backfilled
             try:
@@ -1887,7 +1905,9 @@ def initialize_tables():
                         notion_page_id TEXT,
                         notion_page_url TEXT,
                         notion_exported_at TIMESTAMP,
-                        notion_database_id TEXT
+                        notion_database_id TEXT,
+                        generation_session_id VARCHAR(255),
+                        current_version_id UUID
                     );
                     CREATE UNIQUE INDEX IF NOT EXISTS idx_postmortems_incident_id ON postmortems(incident_id);
                     CREATE INDEX IF NOT EXISTS idx_postmortems_user_id ON postmortems(user_id);
@@ -2018,6 +2038,43 @@ def initialize_tables():
             except Exception as e:
                 logging.warning(f"Error backfilling postmortem_exports: {e}")
                 conn.rollback()
+
+            # Create postmortem_versions table for version history
+            try:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS postmortem_versions (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        postmortem_id UUID NOT NULL REFERENCES postmortems(id) ON DELETE CASCADE,
+                        org_id VARCHAR(255) NOT NULL,
+                        user_id VARCHAR(255) NOT NULL,
+                        content TEXT NOT NULL,
+                        version_number INTEGER NOT NULL DEFAULT 1,
+                        source VARCHAR(50) NOT NULL DEFAULT 'manual',
+                        generation_session_id VARCHAR(255),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_postmortem_versions_postmortem
+                        ON postmortem_versions(postmortem_id, version_number DESC);
+                    CREATE INDEX IF NOT EXISTS idx_postmortem_versions_org
+                        ON postmortem_versions(org_id);
+                """)
+                logging.info("Created postmortem_versions table (if not exists).")
+                conn.commit()
+            except Exception as e:
+                logging.warning(f"Error creating postmortem_versions table: {e}")
+                conn.rollback()
+
+            # Migrations: postmortem columns for existing deployments
+            try:
+                cursor.execute("""
+                    ALTER TABLE postmortems ADD COLUMN IF NOT EXISTS generation_session_id VARCHAR(255);
+                    ALTER TABLE postmortems ADD COLUMN IF NOT EXISTS current_version_id UUID;
+                    ALTER TABLE postmortem_versions ADD COLUMN IF NOT EXISTS generation_session_id VARCHAR(255);
+                """)
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                logging.warning(f"Migration for postmortem columns: {e}")
 
             # Migration: Add resolved_at, alert_fired_at, and investigation_started_at
             # columns to incidents table.
