@@ -140,6 +140,10 @@ CORS(app, origins=FRONTEND_URL, supports_credentials=True,
                               "allow_headers": ["Content-Type", "X-Provider", "X-Requested-With", "X-User-ID",
                                                 "Authorization", "X-Provider-Preference"],
                               "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"]},
+       r"/flyio_api/*": {"origins": FRONTEND_URL, "supports_credentials": True,
+                         "allow_headers": ["Content-Type", "X-Provider", "X-Requested-With", "X-User-ID",
+                                           "Authorization", "X-Provider-Preference"],
+                         "methods": ["GET", "POST", "DELETE", "OPTIONS"]},
         r"/api/ssh-keys*": {"origins": FRONTEND_URL, "supports_credentials": True,
                             "allow_headers": ["Content-Type", "X-Provider", "X-Requested-With", "X-User-ID",
                                               "Authorization", "X-Provider-Preference"],
@@ -597,6 +601,10 @@ app.register_blueprint(tailscale_bp, url_prefix="/tailscale_api")
 # --- Cloudflare Routes ---
 from routes.cloudflare import cloudflare_bp
 app.register_blueprint(cloudflare_bp, url_prefix="/cloudflare_api")
+
+# --- Fly.io Routes ---
+from routes.flyio import flyio_bp
+app.register_blueprint(flyio_bp, url_prefix="/flyio_api")
 
 from routes.terraform import terraform_workspace_bp
 app.register_blueprint(terraform_workspace_bp)
