@@ -801,8 +801,9 @@ def run_background_chat(
                 except Exception as e:
                     logger.warning(f"[BackgroundChat] Failed to send action notification email: {e}")
 
-        # Dispatch on_incident actions configured for after_rca timing
-        if incident_id and trigger_metadata and trigger_metadata.get('source') != 'action':
+        # Dispatch on_incident actions configured for after_rca timing.
+        # Guarded: skip if already dispatched inside _execute_background_chat.
+        if not result.get('after_rca_dispatched') and incident_id and trigger_metadata and trigger_metadata.get('source') != 'action':
             try:
                 from services.actions.executor import dispatch_on_incident_actions
                 dispatch_on_incident_actions(user_id, str(incident_id), timing='after_rca')
@@ -1487,6 +1488,7 @@ async def _execute_background_chat(
             "trigger_metadata": trigger_metadata,
             "tool_calls": tool_calls,
             "guardrail_blocked": guardrail_blocked,
+            "after_rca_dispatched": True,
         }
         
     except Exception as e:
