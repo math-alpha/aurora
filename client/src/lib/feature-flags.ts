@@ -29,6 +29,10 @@ export const isNotionEnabled = () => {
   return getEnv('NEXT_PUBLIC_ENABLE_NOTION') === 'true';
 };
 
+export const isCloudBeesEnabled = () => {
+  return getEnv('NEXT_PUBLIC_ENABLE_CLOUDBEES') === 'true';
+};
+
 export const isBitbucketOAuthEnabled = () => {
   return getEnv('NEXT_PUBLIC_ENABLE_BITBUCKET_OAUTH') === 'true';
 };
